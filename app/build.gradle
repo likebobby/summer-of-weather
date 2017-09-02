@@ -3,7 +3,7 @@ apply plugin: 'kotlin-android'
 
 android {
     compileSdkVersion 26
-    buildToolsVersion "26.0.0"
+    buildToolsVersion "26.0.1"
     defaultConfig {
         applicationId "com.likebobby.summerofweather"
         minSdkVersion 24
@@ -15,7 +15,7 @@ android {
     buildTypes {
         debug {
             buildConfigField "String", "PROJECT_ID", '"weather-station-178620"'
-            buildConfigField "String", "PUBSUB_TOPIC", "projects/weather-station-178620/topics/weather"
+            buildConfigField "String", "PUBSUB_TOPIC", '"weather"'
         }
         release {
             initWith(buildTypes.debug)

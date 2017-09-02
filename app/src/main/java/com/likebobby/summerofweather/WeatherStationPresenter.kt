@@ -24,12 +24,13 @@ import java.io.IOException
 
 class WeatherStationPresenter(var device: WeatherStationContract.Device,
                               var sensorManager: SensorManager,
-                              buttonInputDriver: ButtonInputDriver,
-                              environmentalSensorDriver: Bmx280SensorDriver,
+                              var buttonInputDriver: ButtonInputDriver,
+                              var environmentalSensorDriver: Bmx280SensorDriver,
                               var alphanumericDisplay: AlphanumericDisplay,
                               var ledStrip: Apa102,
                               peripheralManagerService: PeripheralManagerService,
-                              speaker: Speaker) : WeatherStationContract.Actions {
+                              speaker: Speaker,
+                              var pubsubPublisher: PubsubPublisher) : WeatherStationContract.Actions {
 
     enum class DisplayMode {
         PRESSURE,
@@ -50,9 +51,13 @@ class WeatherStationPresenter(var device: WeatherStationContract.Device,
 
     private var led: Gpio
 
+    private val dynamicSensorCallback: SensorManager.DynamicSensorCallback = getDynamicSensorCallback()
+    private val temperatureListener : SensorEventListener = getTemperatureListener()
+    private val pressureListener : SensorEventListener = getPressureListener()
+
     init {
         buttonInputDriver.register()
-        sensorManager.registerDynamicSensorCallback(getDynamicSensorCallback())
+        sensorManager.registerDynamicSensorCallback(dynamicSensorCallback)
         environmentalSensorDriver.registerPressureSensor()
         environmentalSensorDriver.registerTemperatureSensor()
         alphanumericDisplay.setEnabled(true)
@@ -70,6 +75,33 @@ class WeatherStationPresenter(var device: WeatherStationContract.Device,
         led.setActiveType(Gpio.ACTIVE_HIGH)
 
         playSound(speaker)
+
+        pubsubPublisher.start()
+    }
+
+    override fun onDestroy() {
+        sensorManager.unregisterListener(temperatureListener)
+        sensorManager.unregisterListener(pressureListener)
+        sensorManager.unregisterDynamicSensorCallback(dynamicSensorCallback)
+
+        environmentalSensorDriver.close()
+        buttonInputDriver.close()
+
+        alphanumericDisplay.clear()
+        alphanumericDisplay.setEnabled(false)
+        alphanumericDisplay.close()
+
+        ledStrip.write(IntArray(7))
+        ledStrip.brightness = 0
+        ledStrip.close()
+
+        led.value = false
+        led.close()
+
+        sensorManager.unregisterListener(pubsubPublisher.temperatureListener)
+        sensorManager.unregisterListener(pubsubPublisher.pressureListener)
+        pubsubPublisher.close()
+
     }
 
     private fun playSound(speaker: Speaker) {
@@ -87,7 +119,7 @@ class WeatherStationPresenter(var device: WeatherStationContract.Device,
                 speaker.stop()
             }
         })
-        slide.start()
+        //slide.start()
     }
 
     private fun getDynamicSensorCallback(): SensorManager.DynamicSensorCallback {
@@ -95,20 +127,17 @@ class WeatherStationPresenter(var device: WeatherStationContract.Device,
             override fun onDynamicSensorConnected(sensor: Sensor) {
                 if (sensor.getType() === Sensor.TYPE_AMBIENT_TEMPERATURE) {
                     // Our sensor is connected. Start receiving temperature data.
-                    sensorManager.registerListener(getTemperatureListener(), sensor,
+                    sensorManager.registerListener(temperatureListener, sensor,
                             SensorManager.SENSOR_DELAY_NORMAL)
-    //                if (mPubsubPublisher != null) {
-    //                    mSensorManager.registerListener(mPubsubPublisher.getTemperatureListener(), sensor,
-    //                            SensorManager.SENSOR_DELAY_NORMAL)
-    //                }
+
+                        sensorManager.registerListener(pubsubPublisher.temperatureListener, sensor,
+                                SensorManager.SENSOR_DELAY_NORMAL)
                 } else if (sensor.getType() === Sensor.TYPE_PRESSURE) {
                     // Our sensor is connected. Start receiving pressure data.
-                    sensorManager.registerListener(getPressureListener(), sensor,
+                    sensorManager.registerListener(pressureListener, sensor,
                             SensorManager.SENSOR_DELAY_NORMAL)
-    //                if (mPubsubPublisher != null) {
-    //                    mSensorManager.registerListener(mPubsubPublisher.getPressureListener(), sensor,
-    //                            SensorManager.SENSOR_DELAY_NORMAL)
-    //                }
+                        sensorManager.registerListener(pubsubPublisher.pressureListener, sensor,
+                                SensorManager.SENSOR_DELAY_NORMAL)
                 }
             }
 
@@ -164,6 +193,15 @@ class WeatherStationPresenter(var device: WeatherStationContract.Device,
             Log.e(TAG, "Error setting ledstrip", e)
         }
 
+        val img: Int
+        if (lastPressure > BAROMETER_RANGE_SUNNY) {
+            img = R.drawable.ic_sunny
+        } else if (lastPressure < BAROMETER_RANGE_RAINY) {
+            img = R.drawable.ic_rainy
+        } else {
+            img = R.drawable.ic_cloudy
+        }
+        device.setImage(img)
     }
 
 

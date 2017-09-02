@@ -30,6 +30,10 @@ class WeatherStationActivity : Activity(), WeatherStationContract.Device {
         imageView = findViewById(R.id.imageView)
         sensorManager = getSystemService(SensorManager::class.java)
 
+        val credentialId = getResources().getIdentifier("credentials", "raw", getPackageName())
+        val pubsubPublisher = PubsubPublisher(this, "weatherstation",
+                BuildConfig.PROJECT_ID, BuildConfig.PUBSUB_TOPIC, credentialId)
+
         presenter = WeatherStationPresenter(this,
                 sensorManager,
                 ButtonInputDriver(BoardDefaults.buttonGpioPin, Button.LogicState.PRESSED_WHEN_LOW, KeyEvent.KEYCODE_A),
@@ -37,8 +41,24 @@ class WeatherStationActivity : Activity(), WeatherStationContract.Device {
                 AlphanumericDisplay(BoardDefaults.i2cBus),
                 Apa102(BoardDefaults.spiBus, Apa102.Mode.BGR),
                 PeripheralManagerService(),
-                Speaker(BoardDefaults.speakerPwmPin))
+                Speaker(BoardDefaults.speakerPwmPin),
+                pubsubPublisher
+        )
 
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        presenter.onDestroy()
+    }
+
+    private var barometerImageResource: Int = R.drawable.ic_cloudy
+
+    override fun setImage(img: Int) {
+        if (img != barometerImageResource) {
+            imageView.setImageResource(img)
+            barometerImageResource = img
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
